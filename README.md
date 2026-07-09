@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="" width="96" height="96">
+</p>
+
 # Mochi Go SDK
 
 Go SDK for [Mochi](https://github.com/mochi-analytics/mochi), self-hosted
