@@ -41,9 +41,9 @@ jobs:
           set -euo pipefail
 
           if [[ "${{ steps.release.outputs.release_created }}" == "true" ]]; then
-            go list -m "github.com/mochi-analytics/mochi-go@${{ steps.release.outputs.version }}"
+            go list -m "github.com/mochi-analytics/mochi-go@v${{ steps.release.outputs.version }}"
           fi
 
           if [[ "${{ steps.release.outputs['discordgo--release_created'] }}" == "true" ]]; then
-            go list -m "github.com/mochi-analytics/mochi-go/discordgo@${{ steps.release.outputs['discordgo--version'] }}"
+            go list -m "github.com/mochi-analytics/mochi-go/discordgo@v${{ steps.release.outputs['discordgo--version'] }}"
           fi
