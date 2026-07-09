@@ -1,0 +1,24 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "include-v-in-tag": true,
+  "packages": {
+    ".": {
+      "release-type": "go",
+      "component": "mochi-go",
+      "include-component-in-tag": false,
+      "initial-version": "1.0.0",
+      "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "discordgo"
+      ]
+    },
+    "discordgo": {
+      "release-type": "go",
+      "component": "discordgo",
+      "include-component-in-tag": true,
+      "tag-separator": "/",
+      "initial-version": "1.0.0",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}

@@ -1,0 +1,49 @@
+name: release-please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Check out released code
+        if: ${{ steps.release.outputs.releases_created == 'true' }}
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        if: ${{ steps.release.outputs.releases_created == 'true' }}
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Publish modules to Go proxy
+        if: ${{ steps.release.outputs.releases_created == 'true' }}
+        env:
+          GOPROXY: https://proxy.golang.org,direct
+          GONOSUMDB: ""
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ steps.release.outputs.release_created }}" == "true" ]]; then
+            go list -m "github.com/mochi-analytics/mochi-go@${{ steps.release.outputs.version }}"
+          fi
+
+          if [[ "${{ steps.release.outputs['discordgo--release_created'] }}" == "true" ]]; then
+            go list -m "github.com/mochi-analytics/mochi-go/discordgo@${{ steps.release.outputs['discordgo--version'] }}"
+          fi

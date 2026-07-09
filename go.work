@@ -1,0 +1,8 @@
+// Local development workspace: builds the core and the discordgo adapter
+// together without publishing the core. Mirrors the pnpm workspace in mochi-js.
+go 1.21
+
+use (
+	.
+	./discordgo
+)
