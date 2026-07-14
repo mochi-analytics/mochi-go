@@ -111,6 +111,11 @@ and adds the spec's tricky serialization vectors.
 unpublished; drop it once the core is tagged. (Consumers ignore `replace`
 directives in dependency `go.mod` files.)
 
+## Community
+
+Questions or want to share what you built? Join the
+[Mochi Discord](https://discord.gg/59z89Ke4bt).
+
 ## License
 
 Apache-2.0
