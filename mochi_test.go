@@ -209,6 +209,34 @@ func TestSendsSnapshotsImmediately(t *testing.T) {
 	}
 }
 
+func TestSnapshotAutoAttachesResources(t *testing.T) {
+	calls, transport := mockTransport(func(int) (int, http.Header) { return 202, nil })
+	c, _ := newClient(transport, mochi.Options{})
+
+	c.Snapshot(mochi.Snapshot{GuildCount: 1})
+	c.Shutdown()
+
+	mem, ok := (*calls)[0].body["memoryMb"].(float64)
+	if !ok || mem <= 0 {
+		t.Fatalf("want positive memoryMb, got %v", (*calls)[0].body["memoryMb"])
+	}
+}
+
+func TestSnapshotCallerValueWinsOverMeasurement(t *testing.T) {
+	calls, transport := mockTransport(func(int) (int, http.Header) { return 202, nil })
+	c, _ := newClient(transport, mochi.Options{})
+
+	c.Snapshot(mochi.Snapshot{GuildCount: 1, MemoryMb: mochi.Ptr(7), CPUPercent: mochi.Ptr(0.0)})
+	c.Shutdown()
+
+	if got := (*calls)[0].body["memoryMb"]; got != float64(7) {
+		t.Fatalf("want caller memoryMb 7, got %v", got)
+	}
+	if got := (*calls)[0].body["cpuPercent"]; got != float64(0) {
+		t.Fatalf("want caller cpuPercent 0, got %v", got)
+	}
+}
+
 func TestHonorsRetryAfterOn429(t *testing.T) {
 	var mu sync.Mutex
 	count := 0

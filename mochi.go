@@ -19,6 +19,8 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"runtime"
+	"runtime/metrics"
 	"strconv"
 	"strings"
 	"sync"
@@ -74,12 +76,17 @@ type Event struct {
 // Snapshot is a guild-count / health sample. GuildCount is always sent (even 0);
 // the other fields are omitted when unset.
 type Snapshot struct {
-	GuildCount           int    `json:"guildCount"`
-	ShardID              *int   `json:"shardId,omitempty"`
-	TotalShards          *int   `json:"totalShards,omitempty"`
-	ApproximateMemberSum *int   `json:"approximateMemberSum,omitempty"`
-	WsPingMs             *int   `json:"wsPingMs,omitempty"`
-	TS                   string `json:"ts,omitempty"`
+	GuildCount           int      `json:"guildCount"`
+	ShardID              *int     `json:"shardId,omitempty"`
+	TotalShards          *int     `json:"totalShards,omitempty"`
+	ApproximateMemberSum *int     `json:"approximateMemberSum,omitempty"`
+	WsPingMs             *int     `json:"wsPingMs,omitempty"`
+	// CPUPercent is process CPU usage normalized to 0-100 across all cores, and
+	// MemoryMb is resident memory in megabytes. Both are filled in automatically
+	// by Snapshot when nil; set them to override the auto-measurement.
+	CPUPercent *float64 `json:"cpuPercent,omitempty"`
+	MemoryMb   *int     `json:"memoryMb,omitempty"`
+	TS         string   `json:"ts,omitempty"`
 }
 
 type ingestBody struct {
@@ -135,6 +142,12 @@ type Client struct {
 	trigger chan struct{} // batch-full signal to the background loop
 	stop    chan struct{}
 	done    chan struct{}
+
+	// CPU baseline for the delta between snapshots. CPU is a rate, so the first
+	// snapshot only records memory and seeds these.
+	cpuMu     sync.Mutex
+	lastCPU   float64
+	lastCPUAt time.Time
 }
 
 // New builds a Client and starts its background flush loop. Call Shutdown on
@@ -233,10 +246,63 @@ func (c *Client) TrackCommand(name string, ctx Event) {
 
 // Snapshot sends a guild-count / health snapshot immediately (with retries).
 // It never returns an error into the caller; failures go to OnError.
+//
+// Process CPU and memory are measured and attached automatically; values set
+// on s take precedence.
 func (c *Client) Snapshot(s Snapshot) {
+	cpu, mem := c.collectResources()
+	if s.CPUPercent == nil {
+		s.CPUPercent = cpu
+	}
+	if s.MemoryMb == nil {
+		s.MemoryMb = mem
+	}
 	if err := c.send(c.snapshotURL, s); err != nil {
 		c.report(err)
 	}
+}
+
+// collectResources samples process CPU (normalized to 0-100 across all cores,
+// relative to the previous snapshot) and memory obtained from the OS. Both are
+// best-effort: an unsupported metric yields nil rather than a bogus number.
+func (c *Client) collectResources() (cpuPercent *float64, memoryMb *int) {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	// Sys is total memory obtained from the OS; the closest stdlib proxy for RSS.
+	mb := int(m.Sys / (1024 * 1024))
+	memoryMb = &mb
+
+	cpuSecs, ok := readCPUSeconds()
+	if !ok {
+		return cpuPercent, memoryMb
+	}
+	now := time.Now()
+	c.cpuMu.Lock()
+	defer c.cpuMu.Unlock()
+	if !c.lastCPUAt.IsZero() {
+		elapsed := now.Sub(c.lastCPUAt).Seconds()
+		cores := runtime.NumCPU()
+		if elapsed > 0 && cores > 0 {
+			pct := (cpuSecs - c.lastCPU) / elapsed / float64(cores) * 100
+			pct = math.Round(math.Max(0, pct)*10) / 10
+			cpuPercent = &pct
+		}
+	}
+	c.lastCPU = cpuSecs
+	c.lastCPUAt = now
+	return cpuPercent, memoryMb
+}
+
+// readCPUSeconds reads cumulative process CPU seconds via runtime/metrics.
+// The metric is unavailable on older Go toolchains, in which case ok is false.
+func readCPUSeconds() (float64, bool) {
+	const name = "/cpu/classes/total:cpu-seconds"
+	sample := []metrics.Sample{{Name: name}}
+	metrics.Read(sample)
+	if sample[0].Value.Kind() != metrics.KindFloat64 {
+		return 0, false
+	}
+	return sample[0].Value.Float64(), true
 }
 
 // Flush drains the queue now. It is safe to call concurrently; overlapping
